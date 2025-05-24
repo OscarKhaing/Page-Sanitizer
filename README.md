@@ -2,6 +2,10 @@
 
 A powerful web application that simplifies and analyzes web page DOMs using AI. It extracts important elements, determines their intent, and provides a clean, structured representation of the page content with built-in safety mechanisms and confidence scoring.
 
+## Watch Demo Here ##
+
+[Demo](https://drive.google.com/file/d/1bJen5YO9o3ikc0MRX3w359GY9T_8cWaf/view)
+
 ## ✨ New Features
 
 ### 🎯 DOM Labeler Viewer
