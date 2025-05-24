@@ -1,4 +1,7 @@
 import { useState } from 'react'
+import { Container } from '@mui/material'
+import { useMetricsStore } from '../lib/metrics/store'
+import { MetricsDisplay } from '../components/MetricsDisplay'
 
 interface DOMElement {
   tag: string;
@@ -29,6 +32,8 @@ export function PageSanitizer() {
   const [status, setStatus] = useState<string>('')
   const [originalChunks, setOriginalChunks] = useState<DOMChunk[] | null>(null)
   const [processedChunks, setProcessedChunks] = useState<ProcessedDOMChunk[] | null>(null)
+  const setMetrics = useMetricsStore((state) => state.setMetrics)
+  const clearMetrics = useMetricsStore((state) => state.clearMetrics)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -37,6 +42,7 @@ export function PageSanitizer() {
     setStatus('')
     setOriginalChunks(null)
     setProcessedChunks(null)
+    clearMetrics()
 
     try {
       // First get the raw scraped DOM
@@ -71,8 +77,9 @@ export function PageSanitizer() {
         throw new Error('Failed to process DOM');
       }
 
-      const { processedDOM } = await processResponse.json();
+      const { processedDOM, metrics } = await processResponse.json();
       setProcessedChunks(processedDOM);
+      setMetrics(metrics, url);
       setStatus('✨ Successfully processed all sections!');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
@@ -101,7 +108,7 @@ export function PageSanitizer() {
   }
 
   return (
-    <div className="container">
+    <Container maxWidth="lg">
       <h1>Page Sanitizer</h1>
       <form onSubmit={handleSubmit} className="url-form">
         <input
@@ -129,10 +136,12 @@ export function PageSanitizer() {
         </div>
       )}
 
+      <MetricsDisplay />
+
       <div className="results">
         {renderChunks(originalChunks, 'Original DOM')}
         {renderChunks(processedChunks, 'Processed DOM')}
       </div>
-    </div>
+    </Container>
   )
 } 

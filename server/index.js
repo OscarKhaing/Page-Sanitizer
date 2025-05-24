@@ -126,8 +126,9 @@ const CONFIG = {
 
 // Helper function to estimate tokens in text
 function estimateTokens(text) {
+  if (!text) return 0;
   // Rough estimation: 1 token ≈ 4 characters for English text
-  return Math.ceil(text.length / 4);
+  return Math.ceil(text.toString().length / 4);
 }
 
 // Helper function to batch elements based on token count
@@ -353,9 +354,6 @@ function preprocessDOM(element, depth = 0) {
 function chunkDOM(dom) {
   const chunks = [];
   
-  // Helper function to estimate token count (rough estimation)
-  const estimateTokens = (text) => text.split(/\s+/).length * 1.5;
-  
   // Helper function to process a chunk of the DOM
   const processChunk = (element, context = '') => {
     if (!element) return;
@@ -369,7 +367,9 @@ function chunkDOM(dom) {
     const addToChunk = (el) => {
       const tokenEstimate = estimateTokens(el.text);
       if (currentChunk.tokenCount + tokenEstimate > CONFIG.maxTokensPerCall) {
-        chunks.push(currentChunk);
+        if (currentChunk.elements.length > 0) {
+          chunks.push(currentChunk);
+        }
         currentChunk = {
           context,
           elements: [el],
@@ -384,13 +384,13 @@ function chunkDOM(dom) {
     // Special handling for academic paper listings
     if (element.tag === 'body') {
       // Handle main content sections
-      const mainContent = element.children.find(child => 
-        child.tag === 'main' || child.tag === 'article' || child.tag.includes('content'));
+      const mainContent = element.children?.find(child => 
+        child.tag === 'main' || child.tag === 'article' || child.tag?.includes('content'));
       
       if (mainContent) {
         // Look for paper sections (usually in dl, ul, or div elements)
-        const paperSections = mainContent.children.filter(child => 
-          ['dl', 'ul', 'div'].includes(child.tag) && child.children.length > 0);
+        const paperSections = mainContent.children?.filter(child => 
+          ['dl', 'ul', 'div'].includes(child.tag) && child.children?.length > 0) || [];
         
         paperSections.forEach((section, index) => {
           processChunk(section, `Paper Listing Section ${index + 1}`);
@@ -398,8 +398,8 @@ function chunkDOM(dom) {
       }
 
       // Process remaining elements if no clear paper sections found
-      if (!mainContent || paperSections.length === 0) {
-        element.children.forEach((child, index) => {
+      if (!mainContent || !paperSections?.length) {
+        element.children?.forEach((child, index) => {
           processChunk(child, `Content Section ${index + 1}`);
         });
       }
@@ -414,6 +414,67 @@ function chunkDOM(dom) {
 
   processChunk(dom);
   return chunks;
+}
+
+// Add metrics tracking to DOM processing
+async function processDOMWithMetrics(dom) {
+  const metrics = {
+    originalElementCount: 0,
+    filteredOutCount: 0,
+    labeledElementCount: 0,
+    highRiskSkippedCount: 0,
+    fallbackUsedCount: 0
+  };
+
+  // Count original elements
+  const countElements = (node) => {
+    if (!node) return 0;
+    let count = 1; // Count current node
+    if (node.children?.length) {
+      count += node.children.reduce((acc, child) => acc + countElements(child), 0);
+    }
+    return count;
+  };
+  metrics.originalElementCount = countElements(dom);
+
+  // Process DOM with existing logic
+  const chunks = chunkDOM(dom);
+  let processedElements = [];
+  let highRiskSkipped = 0;
+  let fallbacksUsed = 0;
+
+  for (const chunk of chunks) {
+    const batches = batchElements(
+      chunk.elements, 
+      CONFIG.maxTokensPerCall - CONFIG.tokenSafetyMargin
+    );
+    
+    for (const batch of batches) {
+      const processed = await processBatch(batch, chunk.context);
+      processedElements = processedElements.concat(processed);
+
+      // Track metrics during processing
+      processed.forEach(element => {
+        if (element.risk === 'high' && element.confidence < CONFIG.confidenceThresholds.high) {
+          highRiskSkipped++;
+        }
+        if (element.fallbackMetadata && Object.values(element.fallbackMetadata).some(v => v)) {
+          fallbacksUsed++;
+        }
+      });
+    }
+  }
+
+  // Update final metrics
+  metrics.labeledElementCount = processedElements.length;
+  metrics.filteredOutCount = metrics.originalElementCount - processedElements.length;
+  metrics.highRiskSkippedCount = highRiskSkipped;
+  metrics.fallbackUsedCount = fallbacksUsed;
+
+  return {
+    processedDOM: processedElements,
+    metrics
+  };
 }
 
 app.post('/api/scrape', async (req, res) => {
@@ -561,36 +622,37 @@ app.post('/api/process', async (req, res) => {
     const processedChunks = [];
     console.log(`🔍 Starting to process ${chunks.length} chunks`);
 
+    let totalMetrics = {
+      originalElementCount: 0,
+      filteredOutCount: 0,
+      labeledElementCount: 0,
+      highRiskSkippedCount: 0,
+      fallbackUsedCount: 0
+    };
+
     // Process each chunk separately
     for (const chunk of chunks) {
       console.log(`Processing chunk: ${chunk.context}`);
       
-      // Split elements into batches based on token count
-      const batches = batchElements(
-        chunk.elements, 
-        CONFIG.maxTokensPerCall - CONFIG.tokenSafetyMargin
-      );
-      console.log(`Split into ${batches.length} batches`);
-
-      // Process each batch
-      const processedBatches = [];
-      for (let i = 0; i < batches.length; i++) {
-        const processedBatch = await processBatch(batches[i], chunk.context, i);
-        processedBatches.push(processedBatch);
-        console.log(`✅ Successfully processed batch ${i + 1} of ${batches.length}`);
-      }
-
-      // Combine processed batches
-      const combinedElements = processedBatches.flat();
+      const { processedDOM, metrics } = await processDOMWithMetrics(chunk);
       processedChunks.push({
         context: chunk.context,
-        elements: combinedElements
+        elements: processedDOM
       });
-      console.log(`✅ Successfully processed all batches for: ${chunk.context}`);
+
+      // Aggregate metrics
+      Object.keys(totalMetrics).forEach(key => {
+        totalMetrics[key] += metrics[key];
+      });
+
+      console.log(`✅ Successfully processed chunk: ${chunk.context}`);
     }
 
     console.log('✅ Successfully processed all chunks');
-    res.json({ processedDOM: processedChunks });
+    res.json({ 
+      processedDOM: processedChunks,
+      metrics: totalMetrics
+    });
   } catch (error) {
     console.error('❌ Processing error:', error);
     res.status(500).json({ error: error.message });

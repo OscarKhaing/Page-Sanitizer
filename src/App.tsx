@@ -1,11 +1,11 @@
-import { PageSanitizer } from './pages/PageSanitizer'
+import { DOMLabelerViewer } from './pages/DOMLabelerViewer'
 import './App.css'
 
 function App() {
   return (
     <div className="app">
-      <PageSanitizer />
-      </div>
+      <DOMLabelerViewer />
+    </div>
   )
 }
 
