@@ -486,6 +486,17 @@ app.post('/api/scrape', async (req, res) => {
     const page = await browser.newPage();
     await page.goto(url);
 
+    // First, get the total element count from the raw DOM
+    const totalElementCount = await page.evaluate(() => {
+      function countAllElements(element) {
+        if (!element) return 0;
+        let count = 1; // Count current element
+        const children = Array.from(element.children);
+        return count + children.reduce((acc, child) => acc + countAllElements(child), 0);
+      }
+      return countAllElements(document.body);
+    });
+
     const domSnapshot = await page.evaluate((config) => {
       function isVisible(element) {
         const style = window.getComputedStyle(element);
@@ -609,7 +620,7 @@ app.post('/api/scrape', async (req, res) => {
     const chunks = chunkDOM(preprocessed);
     console.log(`✅ Successfully split DOM into ${chunks.length} chunks`);
 
-    res.json({ chunks });
+    res.json({ chunks, totalElementCount });
   } catch (error) {
     console.error('❌ Scraping error:', error);
     res.status(500).json({ error: error.message });
@@ -618,12 +629,12 @@ app.post('/api/scrape', async (req, res) => {
 
 app.post('/api/process', async (req, res) => {
   try {
-    const { chunks } = req.body;
+    const { chunks, totalElementCount } = req.body;
     const processedChunks = [];
     console.log(`🔍 Starting to process ${chunks.length} chunks`);
 
     let totalMetrics = {
-      originalElementCount: 0,
+      originalElementCount: totalElementCount || 0,
       filteredOutCount: 0,
       labeledElementCount: 0,
       highRiskSkippedCount: 0,
@@ -640,13 +651,18 @@ app.post('/api/process', async (req, res) => {
         elements: processedDOM
       });
 
-      // Aggregate metrics
+      // Aggregate metrics (except originalElementCount which we got from scraping)
       Object.keys(totalMetrics).forEach(key => {
-        totalMetrics[key] += metrics[key];
+        if (key !== 'originalElementCount') {
+          totalMetrics[key] += metrics[key];
+        }
       });
 
       console.log(`✅ Successfully processed chunk: ${chunk.context}`);
     }
+
+    // Update filteredOutCount based on total elements
+    totalMetrics.filteredOutCount = totalMetrics.originalElementCount - totalMetrics.labeledElementCount;
 
     console.log('✅ Successfully processed all chunks');
     res.json({ 

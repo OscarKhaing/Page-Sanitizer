@@ -20,9 +20,21 @@ import {
   DOMFunnelVisual,
   LabeledElementCards,
   SecurityExplanation,
-  SecuritySummary
+  SecuritySummary,
+  CleanDOMDisplay
 } from '../components/labeler';
 import type { DOMMetrics } from '../lib/metrics/types';
+
+interface DOMElement {
+  tag: string;
+  text: string;
+  children?: DOMElement[];
+}
+
+interface DOMChunk {
+  context: string;
+  elements: DOMElement[];
+}
 
 interface ProcessedData {
   metrics: DOMMetrics;
@@ -73,6 +85,7 @@ export function DOMLabelerViewer() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [processedData, setProcessedData] = useState<ProcessedData | null>(null);
+  const [rawChunks, setRawChunks] = useState<DOMChunk[] | null>(null);
   const [activeTab, setActiveTab] = useState(0);
   const setMetrics = useMetricsStore(state => state.setMetrics);
   const clearMetrics = useMetricsStore(state => state.clearMetrics);
@@ -80,6 +93,7 @@ export function DOMLabelerViewer() {
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
     setActiveTab(newValue);
     setError(null);
+    setRawChunks(null);
   };
 
   const handleProcess = async () => {
@@ -87,6 +101,7 @@ export function DOMLabelerViewer() {
     setError(null);
     clearMetrics();
     setProcessedData(null);
+    setRawChunks(null);
 
     try {
       let data;
@@ -104,14 +119,15 @@ export function DOMLabelerViewer() {
           throw new Error(errorData.message || 'Failed to scrape page');
         }
 
-        const { chunks } = await scrapeResponse.json();
-        console.log('Scraped chunks:', chunks);
+        const { chunks, totalElementCount } = await scrapeResponse.json();
+        console.log('Scraped chunks:', chunks, 'Total elements:', totalElementCount);
+        setRawChunks(chunks);
 
         // Step 2: Process the chunks
         const processResponse = await fetch(`${API_URL}/process`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chunks }),
+          body: JSON.stringify({ chunks, totalElementCount }),
         });
 
         if (!processResponse.ok) {
@@ -121,10 +137,27 @@ export function DOMLabelerViewer() {
 
         data = await processResponse.json();
       } else { // JSON input
+        // For JSON input, we need to count elements before processing
+        const elements = JSON.parse(domInput);
+        const countElements = (el: DOMElement): number => {
+          if (!el) return 0;
+          let count = 1;
+          if (Array.isArray(el.children)) {
+            count += el.children.reduce((acc: number, child: DOMElement) => acc + countElements(child), 0);
+          }
+          return count;
+        };
+        const totalElementCount = countElements(elements);
+        const initialChunks = [{ context: 'Main Content', elements }];
+        setRawChunks(initialChunks);
+
         const response = await fetch(`${API_URL}/process`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chunks: [{ context: 'Main Content', elements: JSON.parse(domInput) }] }),
+          body: JSON.stringify({ 
+            chunks: initialChunks,
+            totalElementCount
+          }),
         });
 
         if (!response.ok) {
@@ -171,7 +204,7 @@ export function DOMLabelerViewer() {
       }
 
       // Flatten the processed DOM chunks into a single array of elements
-      const flattenedElements = data.processedDOM.reduce((acc, chunk) => {
+      const flattenedElements = data.processedDOM.reduce((acc: Array<any>, chunk: { elements: Array<any> }) => {
         if (Array.isArray(chunk.elements)) {
           return [...acc, ...chunk.elements];
         }
@@ -187,6 +220,7 @@ export function DOMLabelerViewer() {
       console.error('Processing error:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
       setProcessedData(null);
+      setRawChunks(null);
     } finally {
       setLoading(false);
     }
@@ -331,14 +365,23 @@ export function DOMLabelerViewer() {
         </Paper>
       )}
 
-      {/* Only show results if we have processed data and no errors */}
-      {processedData && !error && (
+      {/* Show results if we have either raw chunks or processed data */}
+      {(processedData || rawChunks) && !error && (
         <>
-          <DOMMetricsSection data={processedData.metrics} />
-          <DOMFunnelVisual data={processedData.metrics} />
-          <LabeledElementCards elements={processedData.processedDOM} />
-          <SecurityExplanation />
-          <SecuritySummary metrics={processedData.metrics} />
+          {processedData && (
+            <>
+              <DOMMetricsSection data={processedData.metrics} />
+              <DOMFunnelVisual data={processedData.metrics} />
+            </>
+          )}
+          {rawChunks && <CleanDOMDisplay chunks={rawChunks} />}
+          {processedData && (
+            <>
+              <LabeledElementCards elements={processedData.processedDOM} />
+              <SecurityExplanation />
+              <SecuritySummary metrics={processedData.metrics} />
+            </>
+          )}
         </>
       )}
     </Container>
