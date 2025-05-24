@@ -2,6 +2,50 @@
 
 A powerful web application that simplifies and analyzes web page DOMs using AI. It extracts important elements, determines their intent, and provides a clean, structured representation of the page content with built-in safety mechanisms and confidence scoring.
 
+## ✨ New Features
+
+### 🎯 DOM Labeler Viewer
+Our new interactive viewer provides a comprehensive analysis of web pages:
+
+- **Dual Input Methods**
+  - URL Analysis: Enter any webpage URL for instant processing
+  - JSON Input: Paste DOM structures directly for custom analysis
+
+- **Visual Processing Pipeline**
+  - Real-time DOM metrics and statistics
+  - Interactive funnel visualization
+  - Clean, hierarchical DOM structure view
+  - Labeled element cards with intent and risk levels
+
+- **Smart Metrics Dashboard**
+  - Original element count
+  - Filtered elements analysis
+  - High-risk element detection
+  - Processing success rates
+
+- **Security-First Design**
+  - Risk level indicators
+  - Confidence scoring
+  - Detailed security explanations
+  - Safety summaries
+
+### 💡 Key Benefits
+
+1. **Instant Insights**
+   - See exactly how your webpage is processed
+   - Understand element relationships
+   - Track processing metrics in real-time
+
+2. **Better Decision Making**
+   - Identify high-risk elements
+   - Validate processing accuracy
+   - Monitor safety metrics
+
+3. **Enhanced Debugging**
+   - View clean DOM structure
+   - Track element transformations
+   - Validate processing results
+
 ## 🤖 Agent Runner Module
 
 The Agent Runner is a **separate automation module** that consumes Page Sanitizer's labeled elements to perform common web tasks safely and reliably.
@@ -233,43 +277,31 @@ const validIntents = {
 ## 🚀 Getting Started
 
 ### Prerequisites
-- Node.js (v16 or higher)
+- Node.js (v14 or higher)
 - npm or yarn
-- OpenAI API key
 
 ### Installation
-
-1. Clone the repository:
+1. Clone the repository
 ```bash
 git clone https://github.com/yourusername/page-sanitizer.git
 cd page-sanitizer
 ```
 
-2. Install dependencies:
+2. Install dependencies
 ```bash
-# Install frontend dependencies
 npm install
-
-# Install backend dependencies
-cd server
-npm install
+# or
+yarn install
 ```
 
-3. Set up environment variables:
+3. Start the development server
 ```bash
-# In server directory
-cp .env.example .env
-# Edit .env and add your OpenAI API key
-```
-
-4. Start the application:
-```bash
-# Start backend server (from server directory)
-npm start
-
-# Start frontend (from project root)
 npm run dev
+# or
+yarn dev
 ```
+
+4. Open your browser and navigate to `http://localhost:3000`
 
 ## 💡 Usage
 
